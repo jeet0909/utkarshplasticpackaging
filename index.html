@@ -60,48 +60,15 @@
             text-shadow: 2px 2px 0px #1e40af, 4px 4px 0px rgba(0,0,0,0.2);
         }
     </style>
-   <style>
-    /* --- 1. Standard Syntax (Firefox & Modern Browsers) --- */
-    html {
-        scrollbar-width: thin; /* Makes it thinner on Firefox */
-        scrollbar-color: #1e40af #f1f5f9; /* Thumb Color | Track Color */
-        scroll-behavior: smooth;
+  
+<style>
+    /* Hide system scrollbar so our custom one shows */
+    html, body {
+        scrollbar-width: none; /* Firefox */
+        -ms-overflow-style: none; /* IE/Edge */
     }
-
-    /* --- 2. WebKit Syntax (Chrome, Edge, Safari, Android Chrome) --- */
-    
-    /* Width of the scrollbar */
     ::-webkit-scrollbar {
-        width: 12px; /* Standard width */
-    }
-
-    /* Track (Background) */
-    ::-webkit-scrollbar-track {
-        background: #f1f5f9;
-    }
-
-    /* Handle (The moving part) */
-    ::-webkit-scrollbar-thumb {
-        background-color: #1e40af; /* Brand Blue */
-        border-radius: 20px;       /* Round edges */
-        border: 3px solid #f1f5f9; /* Border creates padding effect */
-    }
-
-    /* Handle on Hover */
-    ::-webkit-scrollbar-thumb:hover {
-        background-color: #0f172a; /* Brand Dark */
-    }
-
-    /* --- 3. Mobile Specific Adjustments --- */
-    @media (max-width: 768px) {
-        /* On Mobile, we generally want it thinner */
-        ::-webkit-scrollbar {
-            width: 6px; 
-        }
-        
-        /* Note: iOS Safari (iPhone) often IGNORES custom scrollbars 
-           on the main body. This is an Apple restriction. 
-           But this will work on Android Chrome & others. */
+        display: none; /* Chrome/Safari */
     }
 </style>
 </head>
@@ -471,10 +438,9 @@
         </div>
     </footer>
     
-   <button id="scrollTopBtn" 
-    class="fixed bottom-8 right-8 z-[100] p-4 bg-brand-blue text-white rounded-full shadow-glow hover:bg-brand-dark transition-all duration-500 transform translate-y-20 opacity-0 btn-3d group cursor-move touch-none">
-    <i class="fas fa-arrow-up text-xl pointer-events-none"></i>
-</button>
+   <div id="customScrollTrack" class="fixed top-0 right-0 w-3 h-full z-[100] bg-gray-100/20 hover:bg-gray-100/50 transition-colors duration-300">
+    <div id="customScrollThumb" class="w-full bg-brand-blue rounded-full cursor-pointer hover:bg-brand-dark transition-colors duration-300 relative opacity-80 hover:opacity-100"></div>
+</div>
     <script>
         const products = [
             { name: "PP Re-process Black Granules", img: "images/IMG_3728.PNG" },
@@ -527,81 +493,105 @@
         });
 
         
-       const scrollBtn = document.getElementById('scrollTopBtn');
-    let isDragging = false;
-    let hasMoved = false;
+      
+    // --- MOBILE & DESKTOP DRAGGABLE SCROLLBAR ---
+    const track = document.getElementById('customScrollTrack');
+    const thumb = document.getElementById('customScrollThumb');
+    let isScrollDragging = false;
+    let startY, startScrollTop;
 
-    // 1. Show/Hide Button on Scroll
-    window.addEventListener('scroll', () => {
-        if (window.scrollY > 300) {
-            scrollBtn.classList.remove('translate-y-20', 'opacity-0');
-        } else {
-            scrollBtn.classList.add('translate-y-20', 'opacity-0');
-        }
-    });
-
-    // 2. Draggable Logic (Works on Mobile & Desktop)
-    let offsetX, offsetY;
-
-    function handleStart(e) {
-        // Stop default browser scrolling when touching the button
-        if(e.type === 'touchstart') e.preventDefault();
+    function updateScrollbar() {
+        if (isScrollDragging) return; 
         
-        hasMoved = false; // Reset movement check
-        isDragging = false;
+        const docHeight = document.documentElement.scrollHeight;
+        const winHeight = window.innerHeight;
+        const scrollAmt = window.scrollY;
+        
+        // Minimum 60px height so it is easy to catch with a finger
+        let thumbHeight = Math.max(60, (winHeight / docHeight) * winHeight);
+        let thumbTop = (scrollAmt / (docHeight - winHeight)) * (winHeight - thumbHeight);
 
-        const clientX = e.clientX || e.touches[0].clientX;
+        thumb.style.height = `${thumbHeight}px`;
+        thumb.style.transform = `translateY(${thumbTop}px)`;
+    }
+
+    // Sync bar when scrolling normally
+    window.addEventListener('scroll', () => window.requestAnimationFrame(updateScrollbar));
+    window.addEventListener('resize', updateScrollbar);
+    setTimeout(updateScrollbar, 100);
+
+    // --- DRAG LOGIC ---
+    function handleScrollStart(e) {
+        isScrollDragging = true;
+        
+        // Prevent default touch scrolling (so the page doesn't fight the scrollbar)
+        e.preventDefault(); 
+        
+        // Get touch or mouse position
+        startY = e.clientY || e.touches[0].clientY;
+        startScrollTop = window.scrollY;
+
+        document.body.style.userSelect = 'none'; 
+        track.classList.add('w-6', 'bg-gray-100'); // Expands width for better grip
+        thumb.classList.add('bg-brand-dark');
+        
+        document.addEventListener('mousemove', handleScrollMove);
+        document.addEventListener('mouseup', handleScrollEnd);
+        document.addEventListener('touchmove', handleScrollMove, { passive: false });
+        document.addEventListener('touchend', handleScrollEnd);
+    }
+
+    function handleScrollMove(e) {
+        if (!isScrollDragging) return;
+        if(e.type === 'touchmove') e.preventDefault(); 
+
         const clientY = e.clientY || e.touches[0].clientY;
-        const rect = scrollBtn.getBoundingClientRect();
+        const deltaY = clientY - startY;
         
-        offsetX = clientX - rect.left;
-        offsetY = clientY - rect.top;
+        const docHeight = document.documentElement.scrollHeight;
+        const winHeight = window.innerHeight;
+        const thumbHeight = thumb.offsetHeight;
 
-        document.addEventListener('mousemove', handleMove);
-        document.addEventListener('mouseup', handleEnd);
-        document.addEventListener('touchmove', handleMove, { passive: false });
-        document.addEventListener('touchend', handleEnd);
+        const scrollableHeight = docHeight - winHeight;
+        const trackScrollableHeight = winHeight - thumbHeight;
+        
+        const scrollRatio = scrollableHeight / trackScrollableHeight;
+        const newScrollTop = startScrollTop + (deltaY * scrollRatio);
+
+        window.scrollTo(0, newScrollTop);
+        
+        // Instant visual update
+        const newThumbTop = Math.min(Math.max(0, (newScrollTop / scrollableHeight) * trackScrollableHeight), trackScrollableHeight);
+        thumb.style.transform = `translateY(${newThumbTop}px)`;
     }
 
-    function handleMove(e) {
-        hasMoved = true; // User is definitely dragging
-        isDragging = true;
-        const clientX = e.clientX || e.touches[0].clientX;
-        const clientY = e.clientY || e.touches[0].clientY;
+    function handleScrollEnd() {
+        isScrollDragging = false;
+        document.body.style.userSelect = '';
+        track.classList.remove('w-6', 'bg-gray-100');
+        thumb.classList.remove('bg-brand-dark');
         
-        let newLeft = clientX - offsetX;
-        let newTop = clientY - offsetY;
-
-        // Keep inside screen
-        newLeft = Math.max(10, Math.min(window.innerWidth - scrollBtn.offsetWidth - 10, newLeft));
-        newTop = Math.max(10, Math.min(window.innerHeight - scrollBtn.offsetHeight - 10, newTop));
-
-        scrollBtn.style.left = newLeft + 'px';
-        scrollBtn.style.top = newTop + 'px';
-        scrollBtn.style.bottom = 'auto';
-        scrollBtn.style.right = 'auto';
+        document.removeEventListener('mousemove', handleScrollMove);
+        document.removeEventListener('mouseup', handleScrollEnd);
+        document.removeEventListener('touchmove', handleScrollMove);
+        document.removeEventListener('touchend', handleScrollEnd);
     }
 
-    function handleEnd(e) {
-        document.removeEventListener('mousemove', handleMove);
-        document.removeEventListener('mouseup', handleEnd);
-        document.removeEventListener('touchmove', handleMove);
-        document.removeEventListener('touchend', handleEnd);
-        
-        // If the user didn't drag (just tapped), Scroll to Top!
-        if (!hasMoved) {
-            window.scrollTo({top: 0, behavior: 'smooth'});
-        }
-        
-        setTimeout(() => { isDragging = false; }, 100);
-    }
+    // Attach events (passive: false is crucial for phones)
+    thumb.addEventListener('mousedown', handleScrollStart);
+    thumb.addEventListener('touchstart', handleScrollStart, { passive: false });
 
-    // Attach events
-    scrollBtn.addEventListener('mousedown', handleStart);
-    scrollBtn.addEventListener('touchstart', handleStart, { passive: false });
-    // Also handle standard click for desktop backup
-    scrollBtn.addEventListener('click', (e) => {
-        if(!isDragging && !hasMoved) window.scrollTo({top: 0, behavior: 'smooth'});
+    // Click track to jump
+    track.addEventListener('click', (e) => {
+        if (e.target === thumb) return; 
+        const rect = track.getBoundingClientRect();
+        const clickY = e.clientY - rect.top;
+        const winHeight = window.innerHeight;
+        const docHeight = document.documentElement.scrollHeight;
+        window.scrollTo({
+            top: (clickY / winHeight) * (docHeight - winHeight),
+            behavior: 'smooth'
+        });
     });
 
     </script>
